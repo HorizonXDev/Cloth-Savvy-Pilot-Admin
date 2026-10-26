@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { functionsUrl, setToken } from "@/lib/api";
+import { Button, Field, Notice } from "@/components/ui";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -45,35 +46,61 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
-            <h1 className="mb-1 text-2xl font-semibold">Pilot dashboard</h1>
-            <p className="mb-6 text-sm text-slate-500">
-                Single-owner admin. Paste the <code className="rounded bg-slate-200 px-1">ADMIN_TOKEN</code>{" "}
-                secret (Supabase → Project Settings → Secrets). It stays in this browser only.
-            </p>
-            <form onSubmit={submit} className="flex flex-col gap-3">
-                <input
-                    type="password"
-                    value={token}
-                    onChange={(e) => setTokenInput(e.target.value)}
-                    placeholder="ADMIN_TOKEN"
-                    autoFocus
-                    className="rounded border border-slate-300 px-3 py-2 font-mono text-sm"
-                />
-                <button
-                    type="submit"
-                    disabled={busy}
-                    className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-                >
-                    {busy ? "Checking…" : "Enter dashboard"}
-                </button>
-                {error && (
-                    <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        {error}
-                    </p>
-                )}
-            </form>
-            <p className="mt-6 break-all text-xs text-slate-400">target: {functionsUrl()}</p>
+        <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center gap-10 px-5 py-12 lg:flex-row lg:items-center lg:gap-16">
+            {/* brand panel */}
+            <section className="flex-1">
+                <p className="eyebrow mb-4">Cloth Savvy · Pilot</p>
+                <h1 className="display text-4xl leading-tight sm:text-5xl">
+                    The owner console for
+                    <span className="text-gold"> the whole platform</span>.
+                </h1>
+                <p className="mt-4 max-w-md text-sm leading-relaxed text-muted">
+                    Tenants, API keys, catalogues and usage — one admin token, one browser, never
+                    on a tenant&apos;s portal. Everything you do here is audited; nothing you do
+                    here can be reached with a tenant session.
+                </p>
+                <ul className="mt-6 flex flex-wrap gap-2 text-xs text-muted">
+                    {["create & suspend tenants", "issue / revoke keys", "run the catalog pipeline", "drop a tenant"].map(
+                        (t) => (
+                            <li key={t} className="rounded-full border border-line px-3 py-1">
+                                {t}
+                            </li>
+                        ),
+                    )}
+                </ul>
+            </section>
+
+            {/* sign-in card */}
+            <section className="card w-full max-w-md card-pad">
+                <h2 className="display mb-1 text-2xl">Sign in</h2>
+                <p className="mb-6 text-sm text-muted">
+                    Paste the <code className="rounded bg-sunken px-1.5 py-0.5 font-mono text-xs text-gold">ADMIN_TOKEN</code>{" "}
+                    secret (Supabase → Project Settings → Secrets). It stays in this browser only.
+                </p>
+
+                <form onSubmit={submit} className="flex flex-col gap-4">
+                    <Field label="Admin token" hint="Stored in localStorage on this device — never in the URL, never on a server.">
+                        <input
+                            type="password"
+                            value={token}
+                            onChange={(e) => setTokenInput(e.target.value)}
+                            placeholder="ADMIN_TOKEN"
+                            autoFocus
+                            className="input font-mono"
+                        />
+                    </Field>
+
+                    <Button type="submit" variant="primary" busy={busy} className="w-full py-2.5">
+                        {busy ? "Checking…" : "Enter console"}
+                    </Button>
+
+                    {error && <Notice tone="error">{error}</Notice>}
+                </form>
+
+                <p className="mt-6 break-all text-[11px] text-muted/70">
+                    target: <span className="font-mono">{functionsUrl()}</span>
+                </p>
+            </section>
         </main>
     );
 }

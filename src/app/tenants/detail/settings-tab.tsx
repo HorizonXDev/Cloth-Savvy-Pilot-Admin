@@ -96,7 +96,7 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
 
     return (
         <form onSubmit={save} className="grid max-w-3xl gap-5">
-            <section className="rounded border border-slate-200 bg-white p-4">
+            <section className="rounded border border-line bg-panel p-4">
                 <h2 className="mb-3 font-medium">Profile</h2>
                 <div className="grid gap-3 sm:grid-cols-2">
                     <label className="text-sm">
@@ -105,7 +105,7 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             required
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-line px-2 py-1.5 text-sm"
                         />
                     </label>
                     <label className="text-sm">
@@ -114,7 +114,7 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                             value={website}
                             onChange={(e) => setWebsite(e.target.value)}
                             placeholder="https://…"
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-line px-2 py-1.5 text-sm"
                         />
                     </label>
                 </div>
@@ -126,15 +126,15 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                         type="button"
                         onClick={toggleStatus}
                         disabled={busy}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+                        className="rounded border border-line px-2 py-1 text-xs hover:bg-panel/5 disabled:opacity-50"
                     >
                         {tenant.status === "active" ? "Suspend tenant" : "Reactivate tenant"}
                     </button>
-                    <span className="text-xs text-slate-400">suspended tenants get 403 on every API call</span>
+                    <span className="text-xs text-muted/70">suspended tenants get 403 on every API call</span>
                 </div>
             </section>
 
-            <section className="rounded border border-slate-200 bg-white p-4">
+            <section className="rounded border border-line bg-panel p-4">
                 <h2 className="mb-3 font-medium">API defaults</h2>
                 <div className="grid gap-3 sm:grid-cols-4">
                     <label className="text-sm">
@@ -144,7 +144,7 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                             onChange={(e) => setCurrency(e.target.value)}
                             placeholder="INR"
                             maxLength={8}
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-line px-2 py-1.5 text-sm"
                         />
                     </label>
                     <label className="text-sm">
@@ -153,7 +153,7 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                             value={minSim}
                             onChange={(e) => setMinSim(e.target.value)}
                             inputMode="decimal"
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-line px-2 py-1.5 text-sm"
                         />
                     </label>
                     <label className="text-sm">
@@ -162,7 +162,7 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                             value={limit}
                             onChange={(e) => setLimit(e.target.value)}
                             inputMode="numeric"
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-line px-2 py-1.5 text-sm"
                         />
                     </label>
                     <label className="text-sm">
@@ -171,24 +171,24 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                             value={rate}
                             onChange={(e) => setRate(e.target.value)}
                             inputMode="numeric"
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-line px-2 py-1.5 text-sm"
                         />
                     </label>
                 </div>
             </section>
 
-            <section className="rounded border border-slate-200 bg-white p-4">
+            <section className="rounded border border-line bg-panel p-4">
                 <div className="mb-3 flex items-center justify-between">
                     <h2 className="font-medium">Combo recipes</h2>
                     <button
                         type="button"
                         onClick={() => setCombos((rows) => [...rows, { occasion: "", sections: "" }])}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                        className="rounded border border-line px-2 py-1 text-xs hover:bg-panel/5"
                     >
                         + occasion
                     </button>
                 </div>
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-muted">
                     occasion → ordered sections. Valid sections: top, bottom, dress, saree, blouse, dupatta,
                     outerwear, footwear, bag, jewellery, accessory. The server rejects invalid recipes.
                 </p>
@@ -199,25 +199,25 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                                 value={row.occasion}
                                 onChange={(e) => setRow(i, { occasion: e.target.value })}
                                 placeholder="office"
-                                className="w-40 rounded border border-slate-300 px-2 py-1.5 font-mono text-sm"
+                                className="w-40 rounded border border-line px-2 py-1.5 font-mono text-sm"
                             />
                             <input
                                 value={row.sections}
                                 onChange={(e) => setRow(i, { sections: e.target.value })}
                                 placeholder="top, bottom, accessory"
-                                className="flex-1 rounded border border-slate-300 px-2 py-1.5 font-mono text-sm"
+                                className="flex-1 rounded border border-line px-2 py-1.5 font-mono text-sm"
                             />
                             <button
                                 type="button"
                                 onClick={() => setCombos((rows) => rows.filter((_, idx) => idx !== i))}
-                                className="rounded border border-slate-300 px-2 text-xs text-slate-500 hover:bg-slate-50"
+                                className="rounded border border-line px-2 text-xs text-muted hover:bg-panel/5"
                                 aria-label="remove recipe"
                             >
                                 ✕
                             </button>
                         </div>
                     ))}
-                    {combos.length === 0 && <p className="text-sm text-slate-400">no recipes — add one</p>}
+                    {combos.length === 0 && <p className="text-sm text-muted/70">no recipes — add one</p>}
                 </div>
             </section>
 
@@ -225,12 +225,12 @@ export default function SettingsTab({ tenant, onUpdated }: Props) {
                 <button
                     type="submit"
                     disabled={busy}
-                    className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                    className="rounded bg-gold text-bg px-4 py-2 text-sm font-medium text-bg hover:bg-[#c99b5a] disabled:opacity-50"
                 >
                     {busy ? "Saving…" : "Save changes"}
                 </button>
                 {msg && (
-                    <span className={`text-sm ${msg.kind === "ok" ? "text-green-700" : "text-red-700"}`}>
+                    <span className={`text-sm ${msg.kind === "ok" ? "text-ok" : "text-danger"}`}>
                         {msg.text}
                     </span>
                 )}

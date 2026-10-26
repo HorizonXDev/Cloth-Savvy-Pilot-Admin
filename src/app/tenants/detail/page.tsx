@@ -10,18 +10,18 @@ import KeysTab from "./keys-tab";
 import UsageTab from "./usage-tab";
 import CatalogTab from "./catalog-tab";
 import UsersTab from "./users-tab";
+import DeleteTenant from "./delete-tenant";
+import { Badge, Loading, Notice } from "@/components/ui";
 
 const TABS = ["settings", "keys", "usage", "catalog", "users"] as const;
 type Tab = (typeof TABS)[number];
 
-// Static export (output: "export") cannot prerender /tenants/[id] — tenants are
-// runtime data — so the id travels in the query string instead:
-//   /tenants/detail?id=<uuid>. useSearchParams needs a Suspense boundary.
 export default function TenantDetailPage() {
+    // The tenant id rides in the query string (`/tenants/detail?id=<uuid>`),
+    // because `output: "export"` cannot prerender a dynamic segment — and
+    // useSearchParams must sit under a Suspense boundary to build.
     return (
-        <Suspense
-            fallback={<main className="mx-auto max-w-6xl p-6 text-sm text-slate-500">loading…</main>}
-        >
+        <Suspense fallback={<div className="py-6 text-sm text-muted">loading…</div>}>
             <TenantDetail />
         </Suspense>
     );
@@ -61,56 +61,49 @@ function TenantDetail() {
     }, [load, router]);
 
     return (
-        <main className="mx-auto max-w-6xl p-6">
-            <nav className="mb-4 flex gap-4 text-sm">
-                <Link href="/tenants" className="text-blue-600 hover:underline">
+        <main>
+            <nav className="mb-4 flex items-center gap-3 text-sm">
+                <Link href="/tenants" className="text-gold hover:underline">
                     ← Tenants
                 </Link>
-                <Link href="/health" className="text-blue-600 hover:underline">
-                    Health
-                </Link>
-                <button
-                    onClick={() => {
-                        clearToken();
-                        router.replace("/login");
-                    }}
-                    className="ml-auto text-slate-500 hover:underline"
-                >
-                    sign out
-                </button>
+                <span className="text-muted/50">/</span>
+                <span className="text-muted">{tenant?.name ?? "…"}</span>
             </nav>
 
             {error && (
-                <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+                <div className="mb-4">
+                    <Notice tone="error">{error}</Notice>
+                </div>
             )}
-            {!tenant && !error && <p className="text-sm text-slate-500">loading…</p>}
+            {!tenant && !error && <Loading label="Loading tenant…" />}
+
             {tenant && (
                 <>
-                    <div className="mb-4 flex flex-wrap items-baseline gap-3">
-                        <h1 className="text-xl font-semibold">{tenant.name}</h1>
-                        <span className="font-mono text-sm text-slate-400">{tenant.slug}</span>
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-xs ${
-                                tenant.status === "active"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-amber-100 text-amber-800"
-                            }`}
-                        >
-                            {tenant.status}
-                        </span>
-                        <span className="font-mono text-xs text-slate-400">{tenant.embedding_model}</span>
-                        <span className="ml-auto font-mono text-xs text-slate-400">{tenant.id}</span>
-                    </div>
+                    <header className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-line pb-5">
+                        <div>
+                            <p className="eyebrow mb-1">Tenant</p>
+                            <h1 className="display text-3xl sm:text-4xl">{tenant.name}</h1>
+                            <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                                <span className="mono text-muted">{tenant.slug}</span>
+                                <Badge tone={tenant.status === "active" ? "ok" : "warn"}>
+                                    {tenant.status}
+                                </Badge>
+                                <span className="mono text-xs text-muted">{tenant.embedding_model}</span>
+                                <span className="text-xs text-muted/70">{tenant.id}</span>
+                            </div>
+                        </div>
+                        <DeleteTenant tenant={tenant} onSuspended={load} />
+                    </header>
 
-                    <div className="mb-4 flex gap-1 border-b border-slate-200">
+                    <div className="mb-6 flex gap-1 overflow-x-auto border-b border-line">
                         {TABS.map((t) => (
                             <button
                                 key={t}
                                 onClick={() => setTab(t)}
-                                className={`-mb-px border-b-2 px-4 py-2 text-sm capitalize ${
+                                className={`-mb-px border-b-2 px-4 py-2.5 text-sm capitalize transition-colors ${
                                     tab === t
-                                        ? "border-slate-900 font-medium text-slate-900"
-                                        : "border-transparent text-slate-500 hover:text-slate-800"
+                                        ? "border-gold font-medium text-gold"
+                                        : "border-transparent text-muted hover:text-ink"
                                 }`}
                             >
                                 {t}

@@ -2,56 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, adminFetch } from "@/lib/api";
-import { parseCsv } from "@/lib/csv";
+import { downloadCsv } from "@/lib/csv";
+import { Badge, Button } from "@/components/ui";
 import type { IngestionRun, ProductRow, SearchHit, Tenant } from "@/lib/types";
 
 const SECTIONS = [
     "top", "bottom", "dress", "saree", "blouse", "dupatta", "outerwear",
     "footwear", "bag", "jewellery", "accessory",
 ];
-const BATCH = 50;
-
-interface ImportState {
-    phase: "idle" | "running" | "done" | "error";
-    runId: string | null;
-    processed: number;
-    total: number;
-    ok: number;
-    failed: Array<{ external_id: string | null; reason: string }>;
+/** One row of catalog_staging, as admin_catalog ?op=staging returns it. */
+interface StagingRow {
+    id: string;
+    external_id: string;
+    payload: { title?: string; section?: string } | null;
+    status: "pending" | "merged" | "failed";
     error: string | null;
-}
-
-const IDLE: ImportState = {
-    phase: "idle", runId: null, processed: 0, total: 0, ok: 0, failed: [], error: null,
-};
-
-/** Map a parsed CSV row to an API import row using auto-detected headers. */
-function toImportRow(headers: string[], cells: string[]): Record<string, unknown> | null {
-    const get = (name: string): string | undefined => {
-        const i = headers.indexOf(name);
-        const v = i >= 0 ? cells[i]?.trim() : undefined;
-        return v === "" ? undefined : v;
-    };
-    const external_id = get("external_id") ?? get("sku") ?? get("id");
-    const title = get("title") ?? get("name");
-    const section = get("section");
-    if (!external_id || !title || !section) return null;
-    const row: Record<string, unknown> = { external_id, title, section };
-    const category = get("category");
-    if (category) row.category = category;
-    const gender = get("gender");
-    if (gender) row.gender = gender;
-    const colors = get("colors");
-    if (colors) row.colors = colors.split(/[;|]/).map((c) => c.trim()).filter(Boolean);
-    const price = get("price");
-    if (price && Number.isFinite(Number(price))) row.price = Number(price);
-    const inStock = get("in_stock");
-    if (inStock !== undefined) row.in_stock = ["true", "1", "yes", "y"].includes(inStock.toLowerCase());
-    const product_url = get("product_url") ?? get("url");
-    if (product_url) row.product_url = product_url;
-    const image_url = get("image_url") ?? get("image");
-    if (image_url) row.image_url = image_url;
-    return row;
+    source_file: string | null;
+    created_at: string;
 }
 
 export default function CatalogTab({ tenant }: { tenant: Tenant }) {
@@ -71,10 +38,10 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
     const [hits, setHits] = useState<SearchHit[] | null>(null);
     const [searching, setSearching] = useState(false);
 
-    // ---- import state
-    const [imp, setImp] = useState<ImportState>(IDLE);
-    const [pendingRows, setPendingRows] = useState<Record<string, unknown>[] | null>(null);
-    const [fileName, setFileName] = useState("");
+    // ---- import queue (rows the TENANT uploaded, waiting for the pipeline)
+    const [staging, setStaging] = useState<StagingRow[] | null>(null);
+    const [stagingTotal, setStagingTotal] = useState(0);
+    const [exportMsg, setExportMsg] = useState<string | null>(null);
 
     // ---- runs
     const [runs, setRuns] = useState<IngestionRun[] | null>(null);
@@ -143,107 +110,57 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
         }
     }
 
-    function onFile(file: File) {
-        setFileName(file.name);
-        setError(null);
-        file.text().then((text) => {
-            const { headers, rows } = parseCsv(text);
-            const needed = ["title", "section"];
-            const hasId = ["external_id", "sku", "id"].some((h) => headers.includes(h));
-            const missing = needed.filter((h) => !headers.includes(h));
-            if (!hasId || missing.length > 0) {
-                setPendingRows(null);
-                setError(
-                    `CSV needs external_id (or sku), title and section columns` +
-                        (missing.length ? ` — missing: ${missing.join(", ")}` : ""),
-                );
-                return;
-            }
-            const mapped: Record<string, unknown>[] = [];
-            const bad: string[] = [];
-            rows.forEach((cells, i) => {
-                const row = toImportRow(headers, cells);
-                if (row) mapped.push(row);
-                else if (cells.some((c) => c.trim() !== "")) bad.push(String(i + 2));
-            });
-            if (bad.length > 0) {
-                setError(`row(s) ${bad.slice(0, 10).join(", ")} lack external_id/title/section — they will be counted as failed`);
-            }
-            setPendingRows(mapped);
-            setImp(IDLE);
-        });
-    }
+    const loadStaging = useCallback(() => {
+        adminFetch<{ rows: StagingRow[]; total: number }>(
+            `/admin_catalog?op=staging&tenant_id=${tenant.id}&limit=200`,
+        )
+            .then((d) => {
+                setStaging(d.rows);
+                setStagingTotal(d.total);
+            })
+            .catch(() => setStaging([])); // older backend: show empty, never break the tab
+    }, [tenant.id]);
 
-    async function runImport() {
-        if (!pendingRows || pendingRows.length === 0) return;
-        setImp({ ...IDLE, phase: "running", total: pendingRows.length });
+    useEffect(() => {
+        loadStaging();
+    }, [loadStaging]);
+
+    /** Export the WHOLE catalogue by paging through it — an export that
+     * silently stops at the first page would be worse than none. */
+    async function exportProducts() {
+        setExportMsg("collecting…");
         try {
-            const start = await adminFetch<{ run: IngestionRun }>("/admin_catalog", {
-                method: "POST",
-                body: { op: "import_start", tenant_id: tenant.id, rows_total: pendingRows.length, notes: fileName },
-            });
-            const runId = start.run.id;
-            let ok = 0;
-            const failed: ImportState["failed"] = [];
-            let processed = 0;
-
-            for (let i = 0; i < pendingRows.length; i += BATCH) {
-                const chunk = pendingRows.slice(i, i + BATCH);
-                let attempt = 0;
-                for (;;) {
-                    try {
-                        const d = await adminFetch<{ batch: { ok: number }; failed: ImportState["failed"] }>(
-                            "/admin_catalog",
-                            {
-                                method: "POST",
-                                body: { op: "import_batch", tenant_id: tenant.id, run_id: runId, rows: chunk },
-                            },
-                        );
-                        ok += d.batch.ok;
-                        failed.push(...d.failed);
-                        break;
-                    } catch (e) {
-                        // encoder 503 / network blip: retry the batch twice, then stop
-                        attempt++;
-                        if (attempt > 2 || (e instanceof ApiError && e.status === 400)) {
-                            if (e instanceof ApiError && e.status === 400) {
-                                failed.push({ external_id: null, reason: e.message });
-                            } else {
-                                failed.push({
-                                    external_id: null,
-                                    reason: `batch ${i / BATCH + 1} failed after retries: ${
-                                        e instanceof Error ? e.message : String(e)
-                                    }`,
-                                });
-                            }
-                            break;
-                        }
-                        await new Promise((r) => setTimeout(r, 2500));
-                    }
+            const headers = [
+                "external_id", "title", "section", "category", "gender", "colors",
+                "price", "in_stock", "status", "product_url", "image_url", "updated_at",
+            ];
+            const rows: unknown[][] = [];
+            let page = 0;
+            let fetched = 0;
+            let grand = 1;
+            do {
+                const d = await adminFetch<{ products: ProductRow[]; total: number }>(
+                    `/admin_catalog?op=products&tenant_id=${tenant.id}&page=${page}&page_size=100`,
+                );
+                grand = d.total;
+                for (const p of d.products) {
+                    rows.push([
+                        p.external_id, p.title, p.section, p.category ?? "", p.gender ?? "",
+                        (p.colors ?? []).join("; "), p.price ?? "", p.in_stock, p.status,
+                        p.product_url ?? "", p.image_url ?? "", p.updated_at,
+                    ]);
                 }
-                processed += chunk.length;
-                setImp((s) => ({ ...s, runId, processed, ok, failed: [...failed] }));
-            }
+                fetched += d.products.length;
+                page += 1;
+                if (d.products.length === 0) break;
+            } while (fetched < grand && page < 200);
 
-            await adminFetch("/admin_catalog", {
-                method: "POST",
-                body: {
-                    op: "import_finish",
-                    tenant_id: tenant.id,
-                    run_id: runId,
-                    status: failed.length === 0 ? "done" : "done",
-                },
-            });
-            setImp((s) => ({ ...s, phase: "done", runId, processed, total: pendingRows.length, ok, failed }));
-            setPendingRows(null);
-            loadProducts();
-            loadRuns();
+            downloadCsv(`products-${tenant.slug}`, headers, rows);
+            setExportMsg(`exported ${rows.length} of ${grand} product(s)`);
         } catch (e) {
-            setImp((s) => ({
-                ...s,
-                phase: "error",
-                error: e instanceof ApiError ? `${e.message}${e.requestId ? ` — ${e.requestId}` : ""}` : String(e),
-            }));
+            setExportMsg(`export failed: ${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            window.setTimeout(() => setExportMsg(null), 4000);
         }
     }
 
@@ -252,13 +169,13 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
     return (
         <div className="grid gap-6">
             {error && (
-                <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+                <p className="rounded border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
             )}
 
             {/* ------------------------------------------------ search preview */}
-            <section className="rounded border border-slate-200 bg-white p-4">
+            <section className="rounded border border-line bg-panel p-4">
                 <h2 className="mb-1 font-medium">Search preview</h2>
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-muted">
                     exactly what a tenant&apos;s API callers would get for this query (real encoder, real RPC).
                 </p>
                 <form onSubmit={search} className="flex flex-wrap gap-2">
@@ -266,12 +183,12 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                         value={sq}
                         onChange={(e) => setSq(e.target.value)}
                         placeholder="blue cotton kurta"
-                        className="min-w-64 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                        className="min-w-64 flex-1 rounded border border-line px-2 py-1.5 text-sm"
                     />
                     <select
                         value={sSection}
                         onChange={(e) => setSSection(e.target.value)}
-                        className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                        className="rounded border border-line px-2 py-1.5 text-sm"
                     >
                         <option value="">any section</option>
                         {SECTIONS.map((s) => (
@@ -283,23 +200,23 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                     <button
                         type="submit"
                         disabled={searching}
-                        className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
+                        className="rounded bg-gold text-bg px-3 py-1.5 text-sm text-bg hover:bg-[#c99b5a] disabled:opacity-50"
                     >
                         {searching ? "Searching…" : "Search"}
                     </button>
                 </form>
                 {hits !== null && (
                     <div className="mt-3 grid gap-2">
-                        {hits.length === 0 && <p className="text-sm text-slate-400">no match (honest empty, not an error)</p>}
+                        {hits.length === 0 && <p className="text-sm text-muted/70">no match (honest empty, not an error)</p>}
                         {hits.map((h) => (
                             <div
                                 key={h.product.external_id}
-                                className="flex items-center gap-3 rounded border border-slate-100 px-3 py-2 text-sm"
+                                className="flex items-center gap-3 rounded border border-line px-3 py-2 text-sm"
                             >
-                                <span className="font-mono text-xs text-slate-400">{h.product.external_id}</span>
+                                <span className="font-mono text-xs text-muted/70">{h.product.external_id}</span>
                                 <span className="flex-1">{h.product.title}</span>
-                                <span className="text-xs text-slate-500">{h.section}</span>
-                                <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                <span className="text-xs text-muted">{h.section}</span>
+                                <span className="rounded bg-gold/10 px-2 py-0.5 text-xs text-gold">
                                     sim {(h.similarity ?? 0).toFixed(3)}
                                 </span>
                             </div>
@@ -308,86 +225,80 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                 )}
             </section>
 
-            {/* ------------------------------------------------ import wizard */}
-            <section className="rounded border border-slate-200 bg-white p-4">
-                <h2 className="mb-1 font-medium">Import catalog (CSV)</h2>
-                <p className="mb-3 text-xs text-slate-500">
-                    columns: <code>external_id</code> (or sku), <code>title</code>, <code>section</code> required —
-                    optional: category, gender, colors (semicolon-separated), price, in_stock, product_url, image_url.
-                    Text embeddings are created server-side with the tenant&apos;s model.
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                    <input
-                        type="file"
-                        accept=".csv,text/csv"
-                        onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) onFile(f);
-                        }}
-                        className="text-sm"
-                    />
-                    {pendingRows && (
-                        <>
-                            <span className="text-sm text-slate-600">
-                                {fileName}: {pendingRows.length} rows ready
-                            </span>
-                            <button
-                                onClick={runImport}
-                                disabled={imp.phase === "running"}
-                                className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-                            >
-                                {imp.phase === "running"
-                                    ? `importing ${imp.processed}/${imp.total}…`
-                                    : "Start import"}
-                            </button>
-                        </>
-                    )}
-                    {imp.phase !== "idle" && (
-                        <button onClick={() => setImp(IDLE)} className="text-xs text-slate-400 hover:underline">
-                            reset
-                        </button>
-                    )}
+            {/* ------------------------------------------ import queue (staging) */}
+            <section className="rounded border border-line bg-panel">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+                    <h2 className="font-medium">Import queue</h2>
+                    <span className="text-xs text-muted">
+                        uploaded by the tenant in their portal · merged by the owner&apos;s pipeline
+                    </span>
                 </div>
-
-                {imp.phase === "running" && (
-                    <div className="mt-3">
-                        <div className="h-2 w-full overflow-hidden rounded bg-slate-100">
-                            <div
-                                className="h-2 bg-blue-500 transition-all"
-                                style={{ width: `${(imp.processed / Math.max(1, imp.total)) * 100}%` }}
-                            />
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                            {imp.ok} inserted, {imp.failed.length} failed — do not close this tab
-                        </p>
-                    </div>
-                )}
-                {imp.phase === "done" && (
-                    <p className="mt-3 rounded bg-green-50 px-3 py-2 text-sm text-green-800">
-                        import finished: {imp.ok} inserted, {imp.failed.length} failed
-                        {imp.failed.length > 0 && " — see run history notes for details"}
+                <div className="px-4 py-3 text-xs text-muted">
+                    Uploads do not touch search. A row sits <strong>pending</strong> until{" "}
+                    <code>tools/merge_staging.py</code> embeds it and writes it to{" "}
+                    <code>products</code>; <strong>failed</strong> rows carry the reason below.
+                    {stagingTotal > 0 && ` ${stagingTotal} row(s) in the queue (showing up to 200).`}
+                </div>
+                {staging === null ? (
+                    <p className="px-4 pb-4 text-sm text-muted">loading…</p>
+                ) : staging.length === 0 ? (
+                    <p className="px-4 pb-6 text-sm text-muted">
+                        Nothing queued — no CSV has been uploaded for this tenant yet.
                     </p>
-                )}
-                {imp.phase === "error" && (
-                    <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">import failed: {imp.error}</p>
-                )}
-                {imp.failed.length > 0 && (
-                    <ul className="mt-2 max-h-40 overflow-y-auto text-xs text-red-700">
-                        {imp.failed.map((f, i) => (
-                            <li key={i}>
-                                {f.external_id ?? "(row)"}: {f.reason}
-                            </li>
-                        ))}
-                    </ul>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-t border-line text-left text-xs uppercase text-muted">
+                                    <th className="px-4 py-2">SKU</th>
+                                    <th className="px-4 py-2">Title</th>
+                                    <th className="px-4 py-2">Section</th>
+                                    <th className="px-4 py-2">Status</th>
+                                    <th className="px-4 py-2">Queued</th>
+                                    <th className="px-4 py-2">Error</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {staging.map((s) => (
+                                    <tr key={s.id} className="border-b border-line">
+                                        <td className="px-4 py-2 font-mono text-xs">{s.external_id}</td>
+                                        <td className="max-w-56 truncate px-4 py-2">
+                                            {s.payload?.title ?? <span className="text-muted/70">—</span>}
+                                        </td>
+                                        <td className="px-4 py-2 text-xs">{s.payload?.section ?? "—"}</td>
+                                        <td className="px-4 py-2">
+                                            <Badge
+                                                tone={
+                                                    s.status === "merged"
+                                                        ? "ok"
+                                                        : s.status === "failed"
+                                                          ? "danger"
+                                                          : "warn"
+                                                }
+                                            >
+                                                {s.status}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-4 py-2 text-xs text-muted">
+                                            {new Date(s.created_at).toLocaleString()}
+                                        </td>
+                                        <td className="max-w-64 truncate px-4 py-2 text-xs text-danger">
+                                            {s.error ?? ""}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </section>
 
             {/* ------------------------------------------------ run history */}
-            <section className="rounded border border-slate-200 bg-white">
-                <h2 className="border-b border-slate-200 px-4 py-3 font-medium">Import runs</h2>
+            <section className="rounded border border-line bg-panel">
+                <h2 className="border-b border-line px-4 py-3 font-medium">Import runs</h2>
                 <table className="w-full text-sm">
                     <thead>
-                        <tr className="text-left text-xs uppercase text-slate-500">
+                        <tr className="text-left text-xs uppercase text-muted">
                             <th className="px-4 py-2">Started</th>
                             <th className="px-4 py-2">Status</th>
                             <th className="px-4 py-2">Rows</th>
@@ -397,19 +308,19 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                     <tbody>
                         {runs?.length === 0 && (
                             <tr>
-                                <td colSpan={4} className="px-4 py-4 text-slate-400">
+                                <td colSpan={4} className="px-4 py-4 text-muted/70">
                                     no imports yet
                                 </td>
                             </tr>
                         )}
                         {runs?.map((r) => (
-                            <tr key={r.id} className="border-t border-slate-100">
+                            <tr key={r.id} className="border-t border-line">
                                 <td className="px-4 py-2 text-xs">{new Date(r.started_at).toLocaleString()}</td>
                                 <td className="px-4 py-2 text-xs">{r.status}</td>
                                 <td className="px-4 py-2 text-xs">
                                     {r.rows_ok} ok / {r.rows_failed} failed / {r.rows_total} total
                                 </td>
-                                <td className="max-w-56 truncate px-4 py-2 text-xs text-slate-500">{r.notes ?? ""}</td>
+                                <td className="max-w-56 truncate px-4 py-2 text-xs text-muted">{r.notes ?? ""}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -417,9 +328,13 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
             </section>
 
             {/* ------------------------------------------------ product browser */}
-            <section className="rounded border border-slate-200 bg-white">
-                <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3">
+            <section className="rounded border border-line bg-panel">
+                <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
                     <h2 className="mr-2 font-medium">Products ({total})</h2>
+                    {exportMsg && <span className="text-xs text-ok">{exportMsg}</span>}
+                    <Button size="sm" onClick={exportProducts} disabled={total === 0}>
+                        Export CSV
+                    </Button>
                     <input
                         value={q}
                         onChange={(e) => {
@@ -427,7 +342,7 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                             setPage(0);
                         }}
                         placeholder="search title…"
-                        className="w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+                        className="w-40 rounded border border-line px-2 py-1 text-sm"
                     />
                     <select
                         value={sectionFilter}
@@ -435,7 +350,7 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                             setSectionFilter(e.target.value);
                             setPage(0);
                         }}
-                        className="rounded border border-slate-300 px-2 py-1 text-sm"
+                        className="rounded border border-line px-2 py-1 text-sm"
                     >
                         <option value="">all sections</option>
                         {SECTIONS.map((s) => (
@@ -450,7 +365,7 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                             setStatusFilter(e.target.value);
                             setPage(0);
                         }}
-                        className="rounded border border-slate-300 px-2 py-1 text-sm"
+                        className="rounded border border-line px-2 py-1 text-sm"
                     >
                         <option value="">all statuses</option>
                         <option value="active">active</option>
@@ -460,7 +375,7 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                            <tr className="border-b border-line text-left text-xs uppercase text-muted">
                                 <th className="px-4 py-2">SKU</th>
                                 <th className="px-4 py-2">Title</th>
                                 <th className="px-4 py-2">Section</th>
@@ -472,25 +387,25 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                         <tbody>
                             {products === null && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-4 text-slate-400">
+                                    <td colSpan={6} className="px-4 py-4 text-muted/70">
                                         loading…
                                     </td>
                                 </tr>
                             )}
                             {products?.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                                        no products — import a CSV above
+                                    <td colSpan={6} className="px-4 py-6 text-center text-muted/70">
+                                        no products yet — the tenant's catalogue is empty
                                     </td>
                                 </tr>
                             )}
                             {products?.map((p) => (
-                                <tr key={p.id} className="border-b border-slate-100">
+                                <tr key={p.id} className="border-b border-line">
                                     <td className="px-4 py-2 font-mono text-xs">{p.external_id}</td>
                                     <td className="px-4 py-2">
                                         {p.title}
                                         {p.colors && p.colors.length > 0 && (
-                                            <span className="ml-2 text-xs text-slate-400">{p.colors.join(", ")}</span>
+                                            <span className="ml-2 text-xs text-muted/70">{p.colors.join(", ")}</span>
                                         )}
                                     </td>
                                     <td className="px-4 py-2 text-xs">{p.section}</td>
@@ -499,8 +414,8 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                                         <span
                                             className={`rounded-full px-2 py-0.5 text-xs ${
                                                 p.status === "active"
-                                                    ? "bg-green-100 text-green-800"
-                                                    : "bg-slate-200 text-slate-600"
+                                                    ? "bg-ok/15 text-ok"
+                                                    : "bg-panel/10 text-ink/75"
                                             }`}
                                         >
                                             {p.status}
@@ -509,7 +424,7 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                                     <td className="px-4 py-2 text-right">
                                         <button
                                             onClick={() => setStatus(p, p.status === "active" ? "archived" : "active")}
-                                            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                                            className="rounded border border-line px-2 py-1 text-xs hover:bg-panel/5"
                                         >
                                             {p.status === "active" ? "Archive" : "Restore"}
                                         </button>
@@ -520,7 +435,7 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                     </table>
                 </div>
                 {totalPages > 1 && (
-                    <div className="flex items-center justify-between border-t border-slate-200 px-4 py-2 text-sm">
+                    <div className="flex items-center justify-between border-t border-line px-4 py-2 text-sm">
                         <button
                             disabled={page === 0}
                             onClick={() => setPage((p) => Math.max(0, p - 1))}
@@ -528,7 +443,7 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                         >
                             ← prev
                         </button>
-                        <span className="text-xs text-slate-500">
+                        <span className="text-xs text-muted">
                             page {page + 1} / {totalPages}
                         </span>
                         <button

@@ -10,6 +10,6 @@ export default function Home() {
         router.replace(getToken() ? "/tenants" : "/login");
     }, [router]);
     return (
-        <main className="mx-auto max-w-3xl p-8 text-sm text-slate-500">Redirecting…</main>
+        <main className="mx-auto max-w-3xl p-8 text-sm text-muted">Redirecting…</main>
     );
 }

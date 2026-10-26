@@ -1,9 +1,280 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+   Cloth Savvy — admin console theme.
+   The palette, type and rhythm are taken from the marketing site
+   (Cloth-Savvy-Web/src/app/globals.css): dark teal backdrop, warm gold as the
+   single accent, off-white ink, Cormorant Garamond for display headings.
+   Renamed to short semantic tokens (bg / panel / ink / gold …) so a data
+   console can be restyled without hunting hex values across 7 pages.
+   ======================================================================== */
+
+@theme {
+  --color-bg: #001e1c;        /* page backdrop (site's hero colour) */
+  --color-sunken: #021411;    /* rails, inputs, recessed surfaces */
+  --color-panel: #072f27;     /* cards, tables, dialogs */
+  --color-line: #14514b;      /* hairlines — 1px borders everywhere */
+  --color-ink: #f9f6f0;       /* primary text (site's off-white) */
+  --color-muted: #a8b8b5;     /* secondary text (site's muted) */
+  --color-gold: #e6b36e;      /* THE accent: primary actions, links */
+  --color-ok: #7ed9a6;
+  --color-warn: #e6b36e;
+  --color-danger: #f0897a;
+
+  --font-display: var(--font-display), Georgia, serif;
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}
+
 :root {
-    color-scheme: light;
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-bg);
 }
 
 body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-bg font-sans text-ink antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-gold) 35%, transparent);
+}
+
+/* Brand scrollbar — thin, teal, gold thumb on hover. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #14514b transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #14514b;
+  border-radius: 8px;
+  border: 3px solid var(--color-bg);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #1d6b60;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+/* ============================ component classes =========================== */
+
+.card {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+
+.card-pad {
+  padding: 1.25rem;
+}
+
+/* Display headings: the site's serif, used for page + section titles. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+}
+
+/* --------------------------------- buttons -------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    opacity 0.15s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-gold);
+  color: #001e1c;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #c99b5a;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(249, 246, 240, 0.06);
+  border-color: #1d6b60;
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 45%, transparent);
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+}
+
+.btn-sm {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+/* --------------------------------- forms ---------------------------------- */
+.label {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-bottom: 0.375rem;
+}
+
+.input {
+  width: 100%;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+}
+.input::placeholder {
+  color: color-mix(in srgb, var(--color-muted) 70%, transparent);
+}
+.input:focus {
+  border-color: var(--color-gold);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gold) 22%, transparent);
+}
+
+/* --------------------------------- badges --------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  border: 1px solid transparent;
+}
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.badge-ok {
+  color: var(--color-ok);
+  background: color-mix(in srgb, var(--color-ok) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-ok) 30%, transparent);
+}
+.badge-warn {
+  color: var(--color-warn);
+  background: color-mix(in srgb, var(--color-warn) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-warn) 30%, transparent);
+}
+.badge-danger {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+.badge-plain {
+  color: var(--color-muted);
+  background: rgba(249, 246, 240, 0.06);
+  border-color: var(--color-line);
+}
+
+/* -------------------------------- messages -------------------------------- */
+.notice {
+  border-radius: 10px;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--color-line);
+  background: rgba(249, 246, 240, 0.04);
+}
+.notice-ok {
+  color: var(--color-ok);
+  border-color: color-mix(in srgb, var(--color-ok) 35%, transparent);
+  background: color-mix(in srgb, var(--color-ok) 10%, transparent);
+}
+.notice-error {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
+
+/* --------------------------------- tables --------------------------------- */
+.data-table {
+  width: 100%;
+  font-size: 0.875rem;
+  border-collapse: collapse;
+}
+.data-table thead th {
+  text-align: left;
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--color-line);
+  font-weight: 500;
+}
+.data-table tbody td {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid rgba(20, 81, 75, 0.55);
+}
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.data-table tbody tr:hover {
+  background: rgba(249, 246, 240, 0.03);
+}
+
+/* ---------------------------------- bars ---------------------------------- */
+.bar-track {
+  background: rgba(249, 246, 240, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.bar-fill {
+  background: linear-gradient(90deg, #c99b5a, var(--color-gold));
+  height: 100%;
+  border-radius: 999px;
 }

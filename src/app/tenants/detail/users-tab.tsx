@@ -84,60 +84,60 @@ export default function UsersTab({ tenant }: { tenant: Tenant }) {
 
     return (
         <div className="grid max-w-4xl gap-5">
-            <p className="text-sm text-slate-500">
-                Portal logins for <span className="font-medium text-slate-700">{tenant.name}</span> — each
+            <p className="text-sm text-muted">
+                Portal logins for <span className="font-medium text-ink/90">{tenant.name}</span> — each
                 login sees only this tenant&apos;s portal (usage, keys, settings, catalog) and nothing else.
             </p>
 
             {error && (
-                <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+                <p className="rounded border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
             )}
 
             {/* Show-once: the temp password lives only in this state. */}
             {created?.temporary_password && (
-                <div className="rounded border border-amber-300 bg-amber-50 p-4">
-                    <p className="mb-2 text-sm font-medium text-amber-900">
+                <div className="rounded border border-warn/40 bg-warn/10 p-4">
+                    <p className="mb-2 text-sm font-medium text-warn">
                         Portal login created for {created.email} — copy the temporary password now
                     </p>
-                    <code className="block break-all rounded bg-white p-3 font-mono text-sm">
+                    <code className="block break-all rounded bg-panel p-3 font-mono text-sm">
                         {created.temporary_password}
                     </code>
-                    <p className="mt-2 text-xs text-amber-800">{created.warning}</p>
+                    <p className="mt-2 text-xs text-warn">{created.warning}</p>
                     <button
                         onClick={() => {
                             navigator.clipboard?.writeText(created.temporary_password!).catch(() => {});
                         }}
-                        className="mt-3 rounded bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800"
+                        className="mt-3 rounded bg-gold text-bg px-3 py-1.5 text-xs font-medium text-bg hover:bg-[#c99b5a]"
                     >
                         Copy
                     </button>
                     <button
                         onClick={() => setCreated(null)}
-                        className="ml-2 rounded border border-amber-700 px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100"
+                        className="ml-2 rounded border border-warn/60 px-3 py-1.5 text-xs text-warn hover:bg-warn/15"
                     >
                         I saved it — dismiss
                     </button>
                 </div>
             )}
             {created?.message && !created.temporary_password && (
-                <p className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                <p className="rounded border border-ok/40 bg-ok/10 px-3 py-2 text-sm text-ok">
                     {created.message} ({created.email})
                 </p>
             )}
 
-            <form onSubmit={invite} className="flex flex-wrap items-center gap-3 rounded border border-slate-200 bg-white p-4">
+            <form onSubmit={invite} className="flex flex-wrap items-center gap-3 rounded border border-line bg-panel p-4">
                 <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="person@brand.com"
                     required
-                    className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+                    className="rounded border border-line px-3 py-1.5 text-sm"
                 />
                 <select
                     value={mode}
                     onChange={(e) => setMode(e.target.value as "invite" | "password")}
-                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    className="rounded border border-line px-2 py-1.5 text-sm"
                 >
                     <option value="invite">invite email (they set a password)</option>
                     <option value="password">temporary password (shown once)</option>
@@ -145,17 +145,17 @@ export default function UsersTab({ tenant }: { tenant: Tenant }) {
                 <button
                     type="submit"
                     disabled={busy}
-                    className="rounded bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                    className="rounded bg-gold text-bg px-4 py-1.5 text-sm font-medium text-bg hover:bg-[#c99b5a] disabled:opacity-50"
                 >
                     {busy ? "Creating…" : "Create login"}
                 </button>
             </form>
 
-            <section className="rounded border border-slate-200 bg-white">
-                <h2 className="border-b border-slate-200 px-4 py-3 font-medium">Portal logins</h2>
+            <section className="rounded border border-line bg-panel">
+                <h2 className="border-b border-line px-4 py-3 font-medium">Portal logins</h2>
                 <table className="w-full text-sm">
                     <thead>
-                        <tr className="text-left text-xs uppercase text-slate-500">
+                        <tr className="text-left text-xs uppercase text-muted">
                             <th className="px-4 py-2">Email</th>
                             <th className="px-4 py-2">Created</th>
                             <th className="px-4 py-2">Status</th>
@@ -165,22 +165,22 @@ export default function UsersTab({ tenant }: { tenant: Tenant }) {
                     <tbody>
                         {users.length === 0 && (
                             <tr>
-                                <td colSpan={4} className="px-4 py-4 text-slate-400">
+                                <td colSpan={4} className="px-4 py-4 text-muted/70">
                                     no portal logins yet
                                 </td>
                             </tr>
                         )}
                         {users.map((u) => (
-                            <tr key={u.user_id} className="border-t border-slate-100">
+                            <tr key={u.user_id} className="border-t border-line">
                                 <td className="px-4 py-2">{u.email}</td>
-                                <td className="px-4 py-2 text-slate-500">
+                                <td className="px-4 py-2 text-muted">
                                     {new Date(u.created_at).toLocaleDateString()}
                                 </td>
                                 <td className="px-4 py-2">
                                     {u.revoked_at ? (
-                                        <span className="text-xs text-red-600">revoked</span>
+                                        <span className="text-xs text-danger">revoked</span>
                                     ) : (
-                                        <span className="text-xs text-green-700">active</span>
+                                        <span className="text-xs text-ok">active</span>
                                     )}
                                 </td>
                                 <td className="px-4 py-2 text-right">
@@ -188,21 +188,21 @@ export default function UsersTab({ tenant }: { tenant: Tenant }) {
                                         {u.revoked_at ? (
                                             <button
                                                 onClick={() => action(u.user_id, "reinstate")}
-                                                className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                                                className="rounded border border-line px-2 py-1 text-xs hover:bg-panel/5"
                                             >
                                                 Reinstate
                                             </button>
                                         ) : (
                                             <button
                                                 onClick={() => action(u.user_id, "revoke")}
-                                                className="rounded border border-amber-200 px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                                                className="rounded border border-warn/40 px-2 py-1 text-xs text-warn hover:bg-warn/10"
                                             >
                                                 Revoke
                                             </button>
                                         )}
                                         <button
                                             onClick={() => action(u.user_id, "delete")}
-                                            className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                                            className="rounded border border-danger/40 px-2 py-1 text-xs text-danger hover:bg-danger/10"
                                         >
                                             Delete
                                         </button>

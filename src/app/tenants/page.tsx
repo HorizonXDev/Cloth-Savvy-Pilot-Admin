@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, adminFetch, clearToken, getToken } from "@/lib/api";
 import type { Tenant } from "@/lib/types";
+import { Badge, Button, Card, Empty, Field, Loading, Notice, PageTitle, TableWrap } from "@/components/ui";
 
 export default function TenantsPage() {
     const router = useRouter();
@@ -15,6 +16,8 @@ export default function TenantsPage() {
     const [name, setName] = useState("");
     const [website, setWebsite] = useState("");
     const [creating, setCreating] = useState(false);
+    const [query, setQuery] = useState("");
+    const [status, setStatus] = useState<"" | "active" | "suspended">("");
 
     const load = useCallback(() => {
         adminFetch<{ tenants: Tenant[] }>("/admin_tenants")
@@ -58,133 +61,177 @@ export default function TenantsPage() {
         }
     }
 
-    return (
-        <main className="mx-auto max-w-5xl p-6">
-            <nav className="mb-4 flex gap-4 text-sm">
-                <Link href="/health" className="text-blue-600 hover:underline">
-                    Health
-                </Link>
-                <button
-                    onClick={() => {
-                        clearToken();
-                        router.replace("/login");
-                    }}
-                    className="ml-auto text-slate-500 hover:underline"
-                >
-                    sign out
-                </button>
-            </nav>
+    // Client-side filter: with the pilot's tenant counts this beats a round
+    // trip, and it stays instant while you type a slug fragment.
+    const visible = useMemo(() => {
+        if (!tenants) return [];
+        const q = query.trim().toLowerCase();
+        return tenants.filter((t) => {
+            if (status && t.status !== status) return false;
+            if (!q) return true;
+            return t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q);
+        });
+    }, [tenants, query, status]);
 
-            <div className="mb-4 flex items-center justify-between">
-                <h1 className="text-xl font-semibold">Tenants</h1>
-                <button
-                    onClick={() => setShowCreate((v) => !v)}
-                    className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
-                >
-                    {showCreate ? "Cancel" : "+ New tenant"}
-                </button>
-            </div>
+    const counts = useMemo(() => {
+        const all = tenants?.length ?? 0;
+        const active = tenants?.filter((t) => t.status === "active").length ?? 0;
+        return { all, active, suspended: all - active };
+    }, [tenants]);
+
+    return (
+        <>
+            <PageTitle
+                eyebrow="Platform"
+                title="Tenants"
+                actions={
+                    <Button variant="primary" onClick={() => setShowCreate((v) => !v)}>
+                        {showCreate ? "Cancel" : "+ New tenant"}
+                    </Button>
+                }
+            />
 
             {error && (
-                <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {error}
-                </p>
+                <div className="mb-4">
+                    <Notice tone="error">{error}</Notice>
+                </div>
             )}
 
             {showCreate && (
-                <form onSubmit={create} className="mb-5 grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-3">
-                    <label className="text-sm">
-                        slug *
-                        <input
-                            value={slug}
-                            onChange={(e) => setSlug(e.target.value)}
-                            placeholder="acme_fashion"
-                            required
-                            pattern="[a-z0-9_]{1,40}"
-                            title="lowercase letters, digits, underscores (max 40)"
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 font-mono text-sm"
-                        />
-                    </label>
-                    <label className="text-sm">
-                        name *
-                        <input
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="Acme Fashion"
-                            required
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <label className="text-sm">
-                        website
-                        <input
-                            value={website}
-                            onChange={(e) => setWebsite(e.target.value)}
-                            placeholder="https://acme.example"
-                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <button
-                        type="submit"
-                        disabled={creating}
-                        className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 sm:col-span-3 sm:justify-self-start"
-                    >
-                        {creating ? "Creating…" : "Create tenant"}
-                    </button>
-                </form>
+                <Card title="Create a tenant" className="mb-6">
+                    <form onSubmit={create} className="grid gap-4 sm:grid-cols-3">
+                        <Field label="slug *" hint="lowercase, digits, underscores · max 40">
+                            <input
+                                value={slug}
+                                onChange={(e) => setSlug(e.target.value)}
+                                placeholder="acme_fashion"
+                                required
+                                pattern="[a-z0-9_]{1,40}"
+                                title="lowercase letters, digits, underscores (max 40)"
+                                className="input font-mono"
+                            />
+                        </Field>
+                        <Field label="name *">
+                            <input
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="Acme Fashion"
+                                required
+                                className="input"
+                            />
+                        </Field>
+                        <Field label="website" hint="optional">
+                            <input
+                                value={website}
+                                onChange={(e) => setWebsite(e.target.value)}
+                                placeholder="https://acme.example"
+                                className="input"
+                            />
+                        </Field>
+                        <div className="sm:col-span-3">
+                            <Button type="submit" variant="primary" busy={creating}>
+                                {creating ? "Creating…" : "Create tenant"}
+                            </Button>
+                        </div>
+                    </form>
+                </Card>
             )}
 
-            {tenants === null && !error && <p className="text-sm text-slate-500">loading…</p>}
-            {tenants && (
-                <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-                                <th className="px-3 py-2">Tenant</th>
-                                <th className="px-3 py-2">Status</th>
-                                <th className="px-3 py-2">Model</th>
-                                <th className="px-3 py-2">Occasions</th>
-                                <th className="px-3 py-2">Created</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {tenants.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-3 py-6 text-center text-slate-400">
-                                        no tenants yet — create the first one
-                                    </td>
-                                </tr>
-                            )}
-                            {tenants.map((t) => (
-                                <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
-                                    <td className="px-3 py-2">
-                                        <Link href={`/tenants/detail?id=${t.id}`} className="font-medium text-blue-600 hover:underline">
-                                            {t.name}
-                                        </Link>
-                                        <span className="ml-2 font-mono text-xs text-slate-400">{t.slug}</span>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        <span
-                                            className={`rounded-full px-2 py-0.5 text-xs ${
-                                                t.status === "active"
-                                                    ? "bg-green-100 text-green-800"
-                                                    : "bg-amber-100 text-amber-800"
-                                            }`}
-                                        >
-                                            {t.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-3 py-2 font-mono text-xs">{t.embedding_model}</td>
-                                    <td className="px-3 py-2">{Object.keys(t.settings?.combos ?? {}).length}</td>
-                                    <td className="px-3 py-2 text-xs text-slate-500">
-                                        {new Date(t.created_at).toLocaleDateString()}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            {/* filter bar */}
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+                <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="search name or slug…"
+                    className="input max-w-xs"
+                    aria-label="Search tenants"
+                />
+                <div className="flex gap-1 rounded-full border border-line p-1">
+                    {([["", `all ${counts.all}`], ["active", `active ${counts.active}`], ["suspended", `suspended ${counts.suspended}`]] as const).map(
+                        ([value, label]) => (
+                            <button
+                                key={value || "all"}
+                                onClick={() => setStatus(value as "" | "active" | "suspended")}
+                                className={`rounded-full px-3 py-1 text-xs capitalize transition-colors ${
+                                    status === value
+                                        ? "bg-gold text-bg"
+                                        : "text-muted hover:text-ink"
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ),
+                    )}
                 </div>
+            </div>
+
+            {tenants === null && !error && <Loading label="Loading tenants…" />}
+
+            {tenants !== null && tenants.length === 0 && (
+                <Empty
+                    title="No tenants yet"
+                    hint="A tenant is one brand on the platform: it owns its own catalogue, API keys and portal logins. Create the first one to get a key issued and start metering calls."
+                    action={
+                        <Button variant="primary" onClick={() => setShowCreate(true)}>
+                            Create the first tenant
+                        </Button>
+                    }
+                />
             )}
-        </main>
+
+            {tenants !== null && tenants.length > 0 && visible.length === 0 && (
+                <Empty
+                    title="No tenant matches that"
+                    hint={`Nothing found for “${query}”${status ? ` with status ${status}` : ""}.`}
+                    action={
+                        <Button
+                            onClick={() => {
+                                setQuery("");
+                                setStatus("");
+                            }}
+                        >
+                            Clear filters
+                        </Button>
+                    }
+                />
+            )}
+
+            {visible.length > 0 && (
+                <TableWrap>
+                    <thead>
+                        <tr>
+                            <th>Tenant</th>
+                            <th>Status</th>
+                            <th>Model</th>
+                            <th>Occasions</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {visible.map((t) => (
+                            <tr key={t.id}>
+                                <td>
+                                    <Link
+                                        href={`/tenants/detail?id=${t.id}`}
+                                        className="font-medium text-gold hover:underline"
+                                    >
+                                        {t.name}
+                                    </Link>
+                                    <span className="mono ml-2 text-xs text-muted">{t.slug}</span>
+                                </td>
+                                <td>
+                                    <Badge tone={t.status === "active" ? "ok" : "warn"}>{t.status}</Badge>
+                                </td>
+                                <td className="mono text-xs text-muted">{t.embedding_model}</td>
+                                <td>{Object.keys(t.settings?.combos ?? {}).length}</td>
+                                <td className="text-xs text-muted">
+                                    {new Date(t.created_at).toLocaleDateString()}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </TableWrap>
+            )}
+        </>
     );
 }

@@ -59,24 +59,24 @@ export default function KeysTab({ tenant }: { tenant: Tenant }) {
     return (
         <div className="grid max-w-4xl gap-5">
             {issued && (
-                <div className="rounded border border-amber-300 bg-amber-50 p-4">
-                    <p className="mb-2 text-sm font-medium text-amber-900">
+                <div className="rounded border border-warn/40 bg-warn/10 p-4">
+                    <p className="mb-2 text-sm font-medium text-warn">
                         New API key — shown exactly once. Copy it now; it is gone when you close this.
                     </p>
                     <div className="flex items-center gap-2">
-                        <code className="flex-1 break-all rounded bg-white px-2 py-2 text-sm">{issued}</code>
+                        <code className="flex-1 break-all rounded bg-panel px-2 py-2 text-sm">{issued}</code>
                         <button
                             onClick={async () => {
                                 await navigator.clipboard.writeText(issued);
                                 setCopied(true);
                             }}
-                            className="rounded bg-amber-700 px-3 py-2 text-sm text-white hover:bg-amber-600"
+                            className="rounded bg-gold text-bg px-3 py-2 text-sm text-bg hover:bg-[#c99b5a]"
                         >
                             {copied ? "copied ✓" : "copy"}
                         </button>
                         <button
                             onClick={() => setIssued(null)}
-                            className="rounded border border-amber-400 px-3 py-2 text-sm text-amber-900 hover:bg-amber-100"
+                            className="rounded border border-warn/50 px-3 py-2 text-sm text-warn hover:bg-warn/15"
                         >
                             I stored it — close
                         </button>
@@ -84,7 +84,7 @@ export default function KeysTab({ tenant }: { tenant: Tenant }) {
                 </div>
             )}
 
-            <section className="rounded border border-slate-200 bg-white p-4">
+            <section className="rounded border border-line bg-panel p-4">
                 <h2 className="mb-3 font-medium">Issue a key</h2>
                 <form onSubmit={issue} className="flex flex-wrap items-end gap-3">
                     <label className="text-sm">
@@ -92,7 +92,7 @@ export default function KeysTab({ tenant }: { tenant: Tenant }) {
                         <select
                             value={environment}
                             onChange={(e) => setEnvironment(e.target.value as "live" | "sandbox")}
-                            className="mt-1 block rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 block rounded border border-line px-2 py-1.5 text-sm"
                         >
                             <option value="sandbox">sandbox (sk_test_)</option>
                             <option value="live">live (sk_live_)</option>
@@ -105,13 +105,13 @@ export default function KeysTab({ tenant }: { tenant: Tenant }) {
                             onChange={(e) => setLabel(e.target.value)}
                             placeholder="shopify-prod"
                             maxLength={100}
-                            className="mt-1 block rounded border border-slate-300 px-2 py-1.5 text-sm"
+                            className="mt-1 block rounded border border-line px-2 py-1.5 text-sm"
                         />
                     </label>
                     <button
                         type="submit"
                         disabled={busy}
-                        className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                        className="rounded bg-gold text-bg px-3 py-1.5 text-sm font-medium text-bg hover:bg-[#c99b5a] disabled:opacity-50"
                     >
                         {busy ? "Issuing…" : "Issue key"}
                     </button>
@@ -119,15 +119,15 @@ export default function KeysTab({ tenant }: { tenant: Tenant }) {
             </section>
 
             {error && (
-                <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+                <p className="rounded border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
             )}
 
-            <section className="rounded border border-slate-200 bg-white">
-                <h2 className="border-b border-slate-200 px-4 py-3 font-medium">Keys</h2>
+            <section className="rounded border border-line bg-panel">
+                <h2 className="border-b border-line px-4 py-3 font-medium">Keys</h2>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                            <tr className="border-b border-line text-left text-xs uppercase text-muted">
                                 <th className="px-4 py-2">Prefix</th>
                                 <th className="px-4 py-2">Env</th>
                                 <th className="px-4 py-2">Label</th>
@@ -139,33 +139,33 @@ export default function KeysTab({ tenant }: { tenant: Tenant }) {
                         <tbody>
                             {keys === null && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-4 text-slate-400">
+                                    <td colSpan={6} className="px-4 py-4 text-muted/70">
                                         loading…
                                     </td>
                                 </tr>
                             )}
                             {keys?.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                                    <td colSpan={6} className="px-4 py-6 text-center text-muted/70">
                                         no keys issued yet
                                     </td>
                                 </tr>
                             )}
                             {keys?.map((k) => (
-                                <tr key={k.id} className="border-b border-slate-100">
+                                <tr key={k.id} className="border-b border-line">
                                     <td className="px-4 py-2 font-mono text-xs">{k.key_prefix ?? "—"}</td>
                                     <td className="px-4 py-2 text-xs">{k.environment}</td>
                                     <td className="px-4 py-2 text-xs">{k.label ?? "—"}</td>
-                                    <td className="px-4 py-2 text-xs text-slate-500">
+                                    <td className="px-4 py-2 text-xs text-muted">
                                         {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : "never"}
                                     </td>
                                     <td className="px-4 py-2">
                                         {k.revoked_at ? (
-                                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
+                                            <span className="rounded-full bg-panel/10 px-2 py-0.5 text-xs text-ink/75">
                                                 revoked
                                             </span>
                                         ) : (
-                                            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                                            <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs text-ok">
                                                 active
                                             </span>
                                         )}
@@ -175,7 +175,7 @@ export default function KeysTab({ tenant }: { tenant: Tenant }) {
                                             <button
                                                 onClick={() => revoke(k.id)}
                                                 disabled={busy}
-                                                className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                className="rounded border border-danger/40 px-2 py-1 text-xs text-danger hover:bg-danger/10 disabled:opacity-50"
                                             >
                                                 Revoke
                                             </button>

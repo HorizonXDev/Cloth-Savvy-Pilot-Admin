@@ -1,92 +1,144 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ApiError, adminFetch, clearToken, getToken } from "@/lib/api";
+import { ApiError, adminFetch } from "@/lib/api";
 import type { HealthReport } from "@/lib/types";
+import { Badge, Button, Card, Loading, Notice, PageTitle, Stat } from "@/components/ui";
 
-function Badge({ status }: { status: string }) {
+function Dependency({
+    name,
+    status,
+    latency,
+    detail,
+    extra,
+}: {
+    name: string;
+    status: "ok" | "degraded" | string;
+    latency?: number;
+    detail?: string;
+    extra?: React.ReactNode;
+}) {
     const ok = status === "ok";
     return (
-        <span
-            className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                ok ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
-            }`}
+        <Card
+            title={name}
+            actions={<Badge tone={ok ? "ok" : "danger"}>{status}</Badge>}
         >
-            {status}
-        </span>
+            <dl className="flex flex-col gap-2 text-sm">
+                {latency !== undefined && (
+                    <div className="flex justify-between gap-3">
+                        <dt className="text-muted">round trip</dt>
+                        <dd className="mono">{latency} ms</dd>
+                    </div>
+                )}
+                {detail && (
+                    <div className="flex justify-between gap-3">
+                        <dt className="text-muted">detail</dt>
+                        <dd className="mono text-xs">{detail}</dd>
+                    </div>
+                )}
+                {extra}
+            </dl>
+        </Card>
     );
 }
 
 export default function HealthPage() {
-    const router = useRouter();
     const [data, setData] = useState<HealthReport | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [checkedAt, setCheckedAt] = useState<string>("");
+
+    const load = useCallback(() => {
+        adminFetch<HealthReport>("/admin_catalog?op=health")
+            .then((d) => {
+                setData(d);
+                setError(null);
+                setCheckedAt(new Date().toLocaleTimeString());
+            })
+            .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
+    }, []);
 
     useEffect(() => {
-        if (!getToken()) {
-            router.replace("/login");
-            return;
-        }
-        adminFetch<HealthReport>("/admin_catalog?op=health")
-            .then(setData)
-            .catch((e) => setError(e instanceof ApiError ? e.message : String(e)));
-    }, [router]);
+        load();
+    }, [load]);
 
     return (
-        <main className="mx-auto max-w-3xl p-6">
-            <nav className="mb-4 flex gap-4 text-sm">
-                <Link href="/tenants" className="text-blue-600 hover:underline">
-                    ← Tenants
-                </Link>
-                <button
-                    onClick={() => {
-                        clearToken();
-                        router.replace("/login");
-                    }}
-                    className="ml-auto text-slate-500 hover:underline"
-                >
-                    sign out
-                </button>
-            </nav>
-            <h1 className="mb-4 text-xl font-semibold">System health</h1>
-            {error && <p className="text-sm text-red-700">{error}</p>}
-            {!data && !error && <p className="text-sm text-slate-500">loading…</p>}
-            {data && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded border border-slate-200 bg-white p-4">
-                        <div className="mb-2 flex items-center justify-between">
-                            <span className="font-medium">Overall</span>
-                            <Badge status={data.status} />
-                        </div>
-                        <p className="text-xs text-slate-500">{data.latency_ms} ms</p>
-                    </div>
-                    <div className="rounded border border-slate-200 bg-white p-4">
-                        <div className="mb-2 flex items-center justify-between">
-                            <span className="font-medium">Database</span>
-                            <Badge status={data.database.status} />
-                        </div>
-                        {data.database.detail && (
-                            <p className="text-xs text-slate-500">{data.database.detail}</p>
-                        )}
-                    </div>
-                    <div className="rounded border border-slate-200 bg-white p-4">
-                        <div className="mb-2 flex items-center justify-between">
-                            <span className="font-medium">Encoder</span>
-                            <Badge status={data.encoder.status} />
-                        </div>
-                        <p className="text-xs text-slate-500">
-                            {data.encoder.latency_ms} ms
-                            {data.encoder.model ? ` · ${data.encoder.model}` : ""}
-                            {data.encoder.revision ? ` · ${data.encoder.revision.slice(0, 12)}` : ""}
-                        </p>
-                        {data.encoder.detail && (
-                            <p className="mt-1 text-xs text-amber-700">{data.encoder.detail}</p>
-                        )}
-                    </div>
+        <>
+            <PageTitle
+                eyebrow="Platform"
+                title="System health"
+                actions={
+                    <>
+                        <Link href="/tenants" className="btn btn-ghost">
+                            ← Tenants
+                        </Link>
+                        <Button variant="primary" onClick={load}>
+                            Re-check
+                        </Button>
+                    </>
+                }
+            />
+
+            {error && (
+                <div className="mb-4">
+                    <Notice tone="error">{error}</Notice>
                 </div>
             )}
-        </main>
+
+            {!data && !error && <Loading label="Checking the stack…" />}
+
+            {data && (
+                <div className="flex flex-col gap-5">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <Stat
+                            label="Overall"
+                            value={
+                                <span className={data.status === "ok" ? "text-ok" : "text-danger"}>
+                                    {data.status}
+                                </span>
+                            }
+                            hint={checkedAt ? `checked ${checkedAt}` : undefined}
+                        />
+                        <Stat label="API round trip" value={`${data.latency_ms} ms`} />
+                        <Stat
+                            label="Encoder model"
+                            value={
+                                <span className="mono text-base">
+                                    {data.encoder.model ?? "—"}
+                                </span>
+                            }
+                            hint={data.encoder.revision ? `revision ${data.encoder.revision.slice(0, 7)}` : undefined}
+                        />
+                    </div>
+
+                    <div className="grid gap-5 lg:grid-cols-2">
+                        <Dependency
+                            name="Database"
+                            status={data.database.status}
+                            detail={data.database.detail}
+                        />
+                        <Dependency
+                            name="Encoder"
+                            status={data.encoder.status}
+                            latency={data.encoder.latency_ms}
+                            detail={data.encoder.detail}
+                        />
+                    </div>
+
+                    <Card title="What this page proves">
+                        <p className="text-sm leading-relaxed text-muted">
+                            Database is a real round trip to the project&apos;s Postgres through the
+                            Data API; the encoder check hits the live text-encoder service and reports
+                            the model + revision it would embed with — the same string every tenant&apos;s{" "}
+                            <span className="mono text-ink">embedding_model</span> is validated against.
+                            A <span className="text-danger">degraded</span> encoder means searches and
+                            combos will answer <span className="mono text-ink">503 upstream_encoder</span>{" "}
+                            rather than quietly returning wrong vectors.
+                        </p>
+                    </Card>
+                </div>
+            )}
+        </>
     );
 }
