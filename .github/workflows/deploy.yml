@@ -1,4 +1,4 @@
-# Push to `main` → build the static export → deploy to Cloudflare.
+# Push to `master` → build the static export → deploy to Cloudflare.
 # Nothing is built on your machine: the `out/` folder is produced here, in the cloud.
 #
 # One-time setup in this repo (Settings → Secrets and variables → Actions):
@@ -15,7 +15,7 @@ name: Deploy admin dashboard
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 # A newer push cancels the run already in flight → you always wait for the newest code.
