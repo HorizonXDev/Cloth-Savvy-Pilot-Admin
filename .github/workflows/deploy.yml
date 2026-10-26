@@ -1,0 +1,66 @@
+# Push to `main` → build the static export → deploy to Cloudflare.
+# Nothing is built on your machine: the `out/` folder is produced here, in the cloud.
+#
+# One-time setup in this repo (Settings → Secrets and variables → Actions):
+#   Secrets  (tab: Secrets)
+#     CLOUDFLARE_API_TOKEN   token with "Edit Cloudflare Workers" (Profile → API Tokens)
+#     CLOUDFLARE_ACCOUNT_ID  from the Cloudflare dashboard sidebar / Workers overview
+#   Variables (tab: Variables) — public by design, they get inlined into the JS bundle
+#     NEXT_PUBLIC_FUNCTIONS_URL=https://<your-project-ref>.supabase.co/functions/v1
+#
+# Do NOT also connect this repo to Cloudflare Workers Builds — that would deploy the
+# same push twice. This workflow and Workers Builds are alternatives; this one is used.
+
+name: Deploy admin dashboard
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push cancels the run already in flight → you always wait for the newest code.
+concurrency:
+  group: deploy-admin-dashboard
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_FUNCTIONS_URL: ${{ vars.NEXT_PUBLIC_FUNCTIONS_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 = the version verified locally, and the one Cloudflare ships.
+      # `cache: npm` keeps the download cache warm, so `npm ci` is quick.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Fail loudly instead of deploying a dashboard that points at 127.0.0.1.
+      - name: Check build variables
+        run: |
+          if [ -z "$NEXT_PUBLIC_FUNCTIONS_URL" ]; then
+            echo "::error::NEXT_PUBLIC_FUNCTIONS_URL is not set as a repository variable"
+            exit 1
+          fi
+
+      - name: Install (frozen lockfile)
+        run: npm ci --no-audit --no-fund
+
+      # `next build` with output:"export" also runs the full TypeScript check,
+      # so there is no separate lint/typecheck step to pay for.
+      - name: Build static export
+        run: npm run build
+
+      - name: Deploy to Cloudflare
+        run: npx --yes wrangler@4.152.0 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

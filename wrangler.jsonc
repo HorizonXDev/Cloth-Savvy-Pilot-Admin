@@ -1,0 +1,13 @@
+// Deployed by Cloudflare Workers Builds (GitHub → `npx wrangler deploy`).
+// "name" MUST equal the Worker name you create in the Cloudflare dashboard,
+// and "assets.directory" is relative to this folder (the repo root).
+{
+  "name": "cloth-savvy-admin",
+  "compatibility_date": "2026-10-25",
+  "assets": {
+    "directory": "./out",
+    // SPA fallback: any unknown path boots the app, whose root page then
+    // redirects to /login or /tenants instead of showing a bare 404.
+    "not_found_handling": "single-page-application"
+  }
+}

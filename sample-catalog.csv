@@ -1,0 +1,7 @@
+external_id,title,section,category,colors,price,in_stock,product_url,image_url
+SKU-1001,Blue cotton kurta,top,top,blue,999,true,https://example.invalid/p/1001,https://example.invalid/i/1001.jpg
+SKU-1002,Linen office shirt,top,top,"blue;white",1499,true,https://example.invalid/p/1002,https://example.invalid/i/1002.jpg
+SKU-1003,Silk wedding saree,saree,saree,red,8999,true,https://example.invalid/p/1003,https://example.invalid/i/1003.jpg
+SKU-1004,Chiffon blouse,blouse,blouse,"red;gold",899,true,https://example.invalid/p/1004,https://example.invalid/i/1004.jpg
+SKU-1005,Gold plated jhumka,jewellery,jewellery,gold,599,true,https://example.invalid/p/1005,https://example.invalid/i/1005.jpg
+SKU-1006,Leather mojaris,footwear,footwear,brown,1799,false,https://example.invalid/p/1006,https://example.invalid/i/1006.jpg
