@@ -56,6 +56,7 @@ export interface ProductRow {
     status: "active" | "archived";
     source: string;
     attributes: Record<string, unknown>;
+    needs_reembed: boolean;
     created_at: string;
     updated_at: string;
 }

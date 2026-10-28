@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, adminFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
 import { Badge, Button } from "@/components/ui";
+import EmbeddingsPanel from "./embeddings-panel";
 import type { IngestionRun, ProductRow, SearchHit, Tenant } from "@/lib/types";
 
 const SECTIONS = [
@@ -235,8 +236,9 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                 </div>
                 <div className="px-4 py-3 text-xs text-muted">
                     Uploads do not touch search. A row sits <strong>pending</strong> until{" "}
-                    <code>tools/merge_staging.py</code> embeds it and writes it to{" "}
-                    <code>products</code>; <strong>failed</strong> rows carry the reason below.
+                    <code>Step 1</code> below exports the id → url table for your image pipeline,
+                    and <code>Step 2</code> applies the vectors it produces. Rows sit pending until
+                    then — nothing reaches search before a vector arrives.
                     {stagingTotal > 0 && ` ${stagingTotal} row(s) in the queue (showing up to 200).`}
                 </div>
                 {staging === null ? (
@@ -291,6 +293,24 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                         </table>
                     </div>
                 )}
+            </section>
+
+            {/* ------------------------------------------------ embedding job */}
+            <section className="grid gap-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h2 className="display text-xl">Embeddings</h2>
+                    <span className="text-xs text-muted">
+                        image vectors only — title / colour / section are filters, never vectors
+                    </span>
+                </div>
+                <EmbeddingsPanel
+                    tenant={tenant}
+                    onMerged={() => {
+                        loadProducts();
+                        loadRuns();
+                        loadStaging();
+                    }}
+                />
             </section>
 
             {/* ------------------------------------------------ run history */}
@@ -420,6 +440,11 @@ export default function CatalogTab({ tenant }: { tenant: Tenant }) {
                                         >
                                             {p.status}
                                         </span>
+                                        {p.needs_reembed && (
+                                            <span className="ml-2 rounded-full bg-warn/15 px-2 py-0.5 text-xs text-warn">
+                                                needs new vector
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-2 text-right">
                                         <button
