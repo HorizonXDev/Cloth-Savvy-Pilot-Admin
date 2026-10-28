@@ -113,7 +113,10 @@ export default function EmbeddingsPanel({
         setOutcome(null);
         const merged: string[] = [];
         const skipped: MergeOutcome["skipped"] = [];
-        const batches = chunk(parsed.rows, 500);
+        // 64 rows ≈ 0.6 MB per request (512 floats × ~12 KB worst case) — the
+        // server's merge cap is 8 MB, but smaller chunks also stay under any
+        // platform ingress limit and make progress visible per batch.
+        const batches = chunk(parsed.rows, 64);
         setProgress({ sent: 0, total: parsed.rows.length });
         try {
             for (const batch of batches) {

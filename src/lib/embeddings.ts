@@ -161,7 +161,8 @@ export function parseEmbeddingsFile(text: string): VectorParse {
     return acc;
 }
 
-/** Split into server-sized batches (the merge op accepts 500 per call). */
+/** Split into server-sized batches (this UI sends 64 per merge call —
+ *  ~0.6 MB, comfortably under the server's 8 MB body cap and any ingress limit). */
 export function chunk<T>(items: T[], size: number): T[][] {
     const out: T[][] = [];
     for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
