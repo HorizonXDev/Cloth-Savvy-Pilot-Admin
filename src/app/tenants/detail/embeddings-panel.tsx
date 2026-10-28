@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { adminFetch } from "@/lib/api";
+import { ApiError, adminFetch } from "@/lib/api";
 import { downloadCsv } from "@/lib/csv";
 import { chunk, parseEmbeddingsFile, VECTOR_DIM, type VectorParse } from "@/lib/embeddings";
+import { log } from "@/lib/log";
 import type { Tenant } from "@/lib/types";
 import { Badge, Button, Card, Notice } from "@/components/ui";
 
@@ -18,7 +19,10 @@ interface ExportRow {
 interface MergeOutcome {
     merged: string[];
     skipped: Array<{ external_id: string | null; reason: string }>;
+    request_id?: string;
 }
+
+const noUrlCount = (rows: ExportRow[]): number => rows.filter((r) => !r.image_url).length;
 
 /**
  * The owner's half of the catalog pipeline, in two moves:
@@ -45,6 +49,7 @@ export default function EmbeddingsPanel({
     const [parsed, setParsed] = useState<VectorParse | null>(null);
     const [merging, setMerging] = useState(false);
     const [progress, setProgress] = useState({ sent: 0, total: 0 });
+    const [mergeStage, setMergeStage] = useState<string | null>(null);
     const [outcome, setOutcome] = useState<MergeOutcome | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -65,11 +70,20 @@ export default function EmbeddingsPanel({
                     all.push(...d.rows);
                     total = d.total;
                     offset += 500;
-                } while (all.length < total && offset < 50000);
+                }                while (all.length < total && offset < 50000);
                 setExportRows(all);
+                log(
+                    "export",
+                    all.length === 0
+                        ? "queue is empty — nothing needs an image vector"
+                        : `${all.length} row(s) still need an image vector` +
+                              (noUrlCount(all) > 0 ? ` (${noUrlCount(all)} without image_url)` : ""),
+                    all.length === 0 ? "warn" : "ok",
+                );
             } catch (e) {
                 setExportRows([]);
                 setError(e instanceof Error ? e.message : String(e));
+                log("export", "failed to load the embed queue — see the ✗ line above", "error");
             } finally {
                 setExportBusy(false);
             }
@@ -97,13 +111,28 @@ export default function EmbeddingsPanel({
                           noUrl.slice(0, 12).map((r) => r.external_id).join(", ")}${noUrl.length > 12 ? "…" : ""}`
                     : ""),
         );
+        log(
+            "export",
+            `Step 1 CSV downloaded — embeddings-input-${tenant.slug}.csv, ${usable.length} row(s)` +
+                (noUrl.length > 0 ? ` (${noUrl.length} left out: no image_url)` : ""),
+            "ok",
+        );
     }
 
     function onFile(file: File) {
         setFileName(file.name);
         setOutcome(null);
         setError(null);
-        file.text().then((text) => setParsed(parseEmbeddingsFile(text)));
+        file.text().then((text) => {
+            const result = parseEmbeddingsFile(text);
+            setParsed(result);
+            log(
+                "parse",
+                `${file.name}: ${result.rows.length} usable (${result.format.toUpperCase()}), ` +
+                    `${result.errors.length} problem row(s), ${result.duplicates.length} duplicate id(s)`,
+                result.errors.length > 0 ? "warn" : "ok",
+            );
+        });
     }
 
     async function merge() {
@@ -118,8 +147,13 @@ export default function EmbeddingsPanel({
         // platform ingress limit and make progress visible per batch.
         const batches = chunk(parsed.rows, 64);
         setProgress({ sent: 0, total: parsed.rows.length });
+        log("merge", `Step 2 — ${fileName}: ${parsed.rows.length} vector(s) in ${batches.length} batch(es)`);
+        let batchNo = 0;
         try {
-            for (const batch of batches) {
+            for (let i = 0; i < batches.length; i++) {
+                const batch = batches[i];
+                batchNo = i + 1;
+                setMergeStage(`batch ${batchNo}/${batches.length}`);
                 const d = await adminFetch<MergeOutcome>("/admin_catalog", {
                     method: "POST",
                     body: {
@@ -131,14 +165,50 @@ export default function EmbeddingsPanel({
                 });
                 merged.push(...d.merged);
                 skipped.push(...d.skipped);
+                log(
+                    "merge",
+                    `batch ${i + 1}/${batches.length}: merged ${d.merged.length}, skipped ${d.skipped.length}` +
+                        (d.request_id ? ` (request ${d.request_id.slice(0, 8)})` : ""),
+                    d.skipped.length > 0 ? "warn" : "ok",
+                );
+                for (const s of d.skipped.slice(0, 3)) {
+                    log("merge", `skipped ${s.external_id ?? "(row)"}: ${s.reason}`, "warn");
+                }
+                if (d.skipped.length > 3) {
+                    log("merge", `…and ${d.skipped.length - 3} more skipped rows in this batch`, "warn");
+                }
                 setProgress((p) => ({ sent: Math.min(p.total, p.sent + batch.length), total: p.total }));
             }
             setOutcome({ merged, skipped });
+            log(
+                "merge",
+                `complete — ${merged.length} merged, ${skipped.length} skipped. ` +
+                    (skipped.length === 0 ? "Search can use the products now." : "Fix the skipped rows and re-upload."),
+                skipped.length === 0 ? "ok" : "warn",
+            );
             onMerged();
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
+            log(
+                "merge",
+                `FAILED in batch ${Math.max(1, batchNo)}/${batches.length} — ${
+                    e instanceof Error ? e.message : String(e)
+                }`,
+                "error",
+            );
+            if (e instanceof ApiError && e.code === "network") {
+                log(
+                    "merge",
+                    "network-level failure: the server never answered. If this panel runs on " +
+                        "localhost, the hosted CORS allowlist only allows its own origin — use the " +
+                        "deployed admin domain. Also confirm admin_catalog was redeployed after the " +
+                        "body-cap fix (a 400 ‘request body exceeds 32768 bytes’ means OLD code is live).",
+                    "warn",
+                );
+            }
         } finally {
             setMerging(false);
+            setMergeStage(null);
         }
     }
 
@@ -274,7 +344,9 @@ export default function EmbeddingsPanel({
                                     />
                                 </div>
                                 <p className="mt-1 text-xs text-muted">
-                                    do not close this tab — each batch is applied by id
+                                    {mergeStage
+                                        ? `stage: ${mergeStage} — applying vectors by id`
+                                        : "do not close this tab — each batch is applied by id"}
                                 </p>
                             </div>
                         )}

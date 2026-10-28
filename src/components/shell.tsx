@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearToken, getToken } from "@/lib/api";
+import LiveLog from "@/components/live-log";
 
 // The shell is a client component mounted in the ROOT layout, so no route
 // files move: /login renders bare, everything else gets the rail. (Static
@@ -124,6 +125,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </header>
 
             <main className="mx-auto max-w-6xl px-4 py-7 sm:px-6 lg:px-8 lg:py-10">{children}</main>
+
+            {/* floating live console — every request + workflow stage */}
+            <LiveLog />
         </div>
     );
 }
