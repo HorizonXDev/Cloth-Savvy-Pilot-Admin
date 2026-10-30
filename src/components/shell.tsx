@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearToken, getToken } from "@/lib/api";
+import { clearToken, hasSession } from "@/lib/api";
 import LiveLog from "@/components/live-log";
 
 // The shell is a client component mounted in the ROOT layout, so no route
@@ -43,15 +43,22 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             setReady(true);
             return;
         }
-        if (!getToken()) {
-            router.replace("/login");
-            return;
-        }
-        setReady(true);
+        let cancelled = false;
+        hasSession().then((ok) => {
+            if (cancelled) return;
+            if (!ok) {
+                router.replace("/login");
+                return;
+            }
+            setReady(true);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [isLogin, pathname, router]);
 
     function signOut() {
-        clearToken();
+        void clearToken();
         router.replace("/login");
     }
 

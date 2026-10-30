@@ -1,8 +1,10 @@
 // lib/api.ts — the single HTTP client for the admin functions.
 //
-// Auth: the ADMIN_TOKEN entered on the login screen lives ONLY in
-// localStorage (never in env, never on the server). Every call attaches it
-// as a bearer token. Errors come back in the pilot envelope
+// Auth: a Supabase Auth session (email + password) obtained on the login
+// screen. Every call attaches its access token as a bearer; the server
+// verifies the JWT and checks the admin_users allow-list, so a token from a
+// non-admin account is refused with 403. The session lives in sessionStorage
+// only (see lib/supabase.ts). Errors come back in the pilot envelope
 // {error:{code,message,request_id}} and are surfaced as ApiError so pages
 // can show a precise, honest message.
 //
@@ -12,29 +14,40 @@
 // app is doing and exactly where a call died.
 
 import { formatBytes, formatMs, log } from "@/lib/log";
+import { supabase } from "@/lib/supabase";
 
 const FUNCTIONS_URL: string =
     process.env.NEXT_PUBLIC_FUNCTIONS_URL ?? "http://127.0.0.1:54431/functions/v1";
-
-const TOKEN_KEY = "pilot_admin_token";
 
 export function functionsUrl(): string {
     return FUNCTIONS_URL.replace(/\/+$/, "");
 }
 
-export function getToken(): string | null {
+/** Current access token, or null when there is no session. Refreshes it
+ * automatically (supabase-js) when it is close to expiry. */
+export async function getToken(): Promise<string | null> {
     if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(TOKEN_KEY);
+    try {
+        const { data, error } = await supabase().auth.getSession();
+        if (error || !data.session) return null;
+        return data.session.access_token;
+    } catch (e) {
+        log("auth", `session lookup failed: ${e instanceof Error ? e.message : "unknown"}`, "warn");
+        return null;
+    }
 }
 
-export function setToken(token: string): void {
-    window.localStorage.setItem(TOKEN_KEY, token);
-    log("auth", `admin token stored in localStorage (${token.length} chars) — origin ${window.location.origin}`, "ok");
+export async function hasSession(): Promise<boolean> {
+    return (await getToken()) !== null;
 }
 
-export function clearToken(): void {
-    window.localStorage.removeItem(TOKEN_KEY);
-    log("auth", "signed out — token removed from localStorage");
+export async function clearToken(): Promise<void> {
+    try {
+        await supabase().auth.signOut();
+        log("auth", "signed out — Supabase session cleared");
+    } catch (e) {
+        log("auth", `sign-out failed: ${e instanceof Error ? e.message : "unknown"}`, "warn");
+    }
 }
 
 export class ApiError extends Error {
@@ -78,10 +91,10 @@ export async function adminFetch<T = Record<string, unknown>>(
 ): Promise<T> {
     const stage = stageOf(path);
     const method = opts.method ?? "GET";
-    const token = getToken();
+    const token = await getToken();
     if (!token) {
-        log("auth", "no admin token in localStorage — sign in first", "warn");
-        throw new ApiError(401, "no_token", "not signed in — enter the admin token", null);
+        log("auth", "no admin session — sign in first", "warn");
+        throw new ApiError(401, "no_token", "not signed in — sign in with your admin account", null);
     }
     const bodyText = opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
     const size = bodyText === undefined ? "" : ` ${formatBytes(bodyText.length)}`;

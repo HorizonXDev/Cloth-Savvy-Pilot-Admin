@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ApiError, adminFetch, clearToken, getToken } from "@/lib/api";
+import { ApiError, adminFetch, clearToken, hasSession } from "@/lib/api";
 import type { Tenant } from "@/lib/types";
 import { Badge, Button, Card, Empty, Field, Loading, Notice, PageTitle, TableWrap } from "@/components/ui";
 
@@ -24,7 +24,7 @@ export default function TenantsPage() {
             .then((d) => setTenants(d.tenants))
             .catch((e) => {
                 if (e instanceof ApiError && e.status === 401) {
-                    clearToken();
+                    void clearToken();
                     router.replace("/login");
                 } else {
                     setError(e instanceof Error ? e.message : String(e));
@@ -33,11 +33,18 @@ export default function TenantsPage() {
     }, [router]);
 
     useEffect(() => {
-        if (!getToken()) {
-            router.replace("/login");
-            return;
-        }
-        load();
+        let cancelled = false;
+        hasSession().then((ok) => {
+            if (cancelled) return;
+            if (!ok) {
+                router.replace("/login");
+                return;
+            }
+            load();
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [load, router]);
 
     async function create(e: React.FormEvent) {

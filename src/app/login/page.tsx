@@ -2,45 +2,60 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { functionsUrl, setToken } from "@/lib/api";
+import { functionsUrl } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { Button, Field, Notice } from "@/components/ui";
 
 export default function LoginPage() {
     const router = useRouter();
-    const [token, setTokenInput] = useState("");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
 
     async function submit(e: React.FormEvent) {
         e.preventDefault();
-        if (!token.trim()) {
-            setError("paste the ADMIN_TOKEN secret value");
+        if (!email.trim() || !password) {
+            setError("enter your admin email and password");
             return;
         }
         setBusy(true);
         setError(null);
-        setToken(token.trim());
-        // Verify the token against a real admin call before believing it.
+
+        const { data, error: signInError } = await supabase().auth.signInWithPassword({
+            email: email.trim(),
+            password,
+        });
+        if (signInError || !data.session) {
+            setError(signInError?.message ?? "sign-in failed");
+            setBusy(false);
+            return;
+        }
+
+        // Signed in is not the same as allowed: the server checks admin_users.
         try {
             const res = await fetch(`${functionsUrl()}/admin_tenants`, {
-                headers: { Authorization: `Bearer ${token.trim()}` },
+                headers: { Authorization: `Bearer ${data.session.access_token}` },
             });
-            if (res.status === 401 || res.status === 500) {
+            if (!res.ok) {
                 const body = (await res.json().catch(() => null)) as
                     | { error?: { message?: string } }
                     | null;
-                setError(body?.error?.message ?? "token rejected");
-                localStorage.removeItem("pilot_admin_token");
+                await supabase().auth.signOut();
+                setError(
+                    res.status === 403
+                        ? `${body?.error?.message ?? "not an admin"} — ask the owner to add ${email.trim()} to admin_users`
+                        : body?.error?.message ?? `rejected with HTTP ${res.status}`,
+                );
                 setBusy(false);
                 return;
             }
             router.replace("/tenants");
-        } catch (e) {
+        } catch (err) {
             setError(
-                `cannot reach ${functionsUrl()} — is the harness / functions serve running? ` +
-                    `(${e instanceof Error ? e.message : "network error"})`,
+                `cannot reach ${functionsUrl()} — is the functions endpoint up? ` +
+                    `(${err instanceof Error ? err.message : "network error"})`,
             );
-            localStorage.removeItem("pilot_admin_token");
             setBusy(false);
         }
     }
@@ -55,9 +70,12 @@ export default function LoginPage() {
                     <span className="text-gold"> the whole platform</span>.
                 </h1>
                 <p className="mt-4 max-w-md text-sm leading-relaxed text-muted">
-                    Tenants, API keys, catalogues and usage — one admin token, one browser, never
-                    on a tenant&apos;s portal. Everything you do here is audited; nothing you do
-                    here can be reached with a tenant session.
+                    Tenants, API keys, catalogues and usage — one admin account, one browser, never
+                    on a tenant&apos;s portal. Every mutating action is written to{" "}
+                    <code className="rounded bg-sunken px-1.5 py-0.5 font-mono text-xs text-gold">
+                        admin_audit
+                    </code>
+                    ; nothing you do here can be reached with a tenant session.
                 </p>
                 <ul className="mt-6 flex flex-wrap gap-2 text-xs text-muted">
                     {["create & suspend tenants", "issue / revoke keys", "run the catalog pipeline", "drop a tenant"].map(
@@ -74,19 +92,35 @@ export default function LoginPage() {
             <section className="card w-full max-w-md card-pad">
                 <h2 className="display mb-1 text-2xl">Sign in</h2>
                 <p className="mb-6 text-sm text-muted">
-                    Paste the <code className="rounded bg-sunken px-1.5 py-0.5 font-mono text-xs text-gold">ADMIN_TOKEN</code>{" "}
-                    secret (Supabase → Project Settings → Secrets). It stays in this browser only.
+                    Use your admin account (Supabase Auth). Access is granted only while your
+                    user id is listed in{" "}
+                    <code className="rounded bg-sunken px-1.5 py-0.5 font-mono text-xs text-gold">
+                        admin_users
+                    </code>
+                    .
                 </p>
 
                 <form onSubmit={submit} className="flex flex-col gap-4">
-                    <Field label="Admin token" hint="Stored in localStorage on this device — never in the URL, never on a server.">
+                    <Field label="Email">
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="owner@clothsavvy.com"
+                            autoComplete="username"
+                            autoFocus
+                            className="input"
+                        />
+                    </Field>
+
+                    <Field label="Password" hint="The session is kept in sessionStorage — closing the tab signs you out.">
                         <input
                             type="password"
-                            value={token}
-                            onChange={(e) => setTokenInput(e.target.value)}
-                            placeholder="ADMIN_TOKEN"
-                            autoFocus
-                            className="input font-mono"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            autoComplete="current-password"
+                            className="input"
                         />
                     </Field>
 

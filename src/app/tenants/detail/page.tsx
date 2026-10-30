@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ApiError, adminFetch, clearToken, getToken } from "@/lib/api";
+import { ApiError, adminFetch, clearToken, hasSession } from "@/lib/api";
 import type { Tenant } from "@/lib/types";
 import SettingsTab from "./settings-tab";
 import KeysTab from "./keys-tab";
@@ -44,7 +44,7 @@ function TenantDetail() {
             })
             .catch((e) => {
                 if (e instanceof ApiError && e.status === 401) {
-                    clearToken();
+                    void clearToken();
                     router.replace("/login");
                 } else {
                     setError(e instanceof Error ? e.message : String(e));
@@ -53,11 +53,18 @@ function TenantDetail() {
     }, [id, router]);
 
     useEffect(() => {
-        if (!getToken()) {
-            router.replace("/login");
-            return;
-        }
-        load();
+        let cancelled = false;
+        hasSession().then((ok) => {
+            if (cancelled) return;
+            if (!ok) {
+                router.replace("/login");
+                return;
+            }
+            load();
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [load, router]);
 
     return (

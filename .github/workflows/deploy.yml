@@ -7,6 +7,8 @@
 #     CLOUDFLARE_ACCOUNT_ID  from the Cloudflare dashboard sidebar / Workers overview
 #   Variables (tab: Variables) — public by design, they get inlined into the JS bundle
 #     NEXT_PUBLIC_FUNCTIONS_URL=https://<your-project-ref>.supabase.co/functions/v1
+#     NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+#     NEXT_PUBLIC_SUPABASE_ANON_KEY=<project anon (public) key>
 #
 # Do NOT also connect this repo to Cloudflare Workers Builds — that would deploy the
 # same push twice. This workflow and Workers Builds are alternatives; this one is used.
@@ -33,6 +35,8 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       NEXT_PUBLIC_FUNCTIONS_URL: ${{ vars.NEXT_PUBLIC_FUNCTIONS_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,10 +50,12 @@ jobs:
       # Fail loudly instead of deploying a dashboard that points at 127.0.0.1.
       - name: Check build variables
         run: |
-          if [ -z "$NEXT_PUBLIC_FUNCTIONS_URL" ]; then
-            echo "::error::NEXT_PUBLIC_FUNCTIONS_URL is not set as a repository variable"
-            exit 1
-          fi
+          for name in NEXT_PUBLIC_FUNCTIONS_URL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set as a repository variable"
+              exit 1
+            fi
+          done
 
       - name: Install (frozen lockfile)
         run: npm ci --no-audit --no-fund
